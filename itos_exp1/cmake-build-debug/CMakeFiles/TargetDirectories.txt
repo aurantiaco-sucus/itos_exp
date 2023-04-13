@@ -1,0 +1,3 @@
+/run/media/konqi/3AD6-C3E0/itos_exp1/cmake-build-debug/CMakeFiles/itos_exp1.dir
+/run/media/konqi/3AD6-C3E0/itos_exp1/cmake-build-debug/CMakeFiles/edit_cache.dir
+/run/media/konqi/3AD6-C3E0/itos_exp1/cmake-build-debug/CMakeFiles/rebuild_cache.dir
