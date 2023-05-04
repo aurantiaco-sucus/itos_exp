@@ -1,3 +1,28 @@
-//
-// Created by wawei on 23-4-14.
-//
+#include "common.h"
+
+#define MSGKEY 7775
+
+struct msgform
+{
+    long mtype;
+    char mtext[1000];
+} msg;
+
+int msgqid;
+
+void server( )
+{
+    msgqid=msgget(MSGKEY,0777|IPC_CREAT);  /*创建75#消息队列*/
+    do
+    {
+        msgrcv(msgqid,&msg,1030,0,0);   /*接收消息*/
+        printf("(server)received\n");
+    }while(msg.mtype!=1);
+    msgctl(msgqid,IPC_RMID,0);  /*删除消息队列，归还资源*/
+    exit(0);
+}
+
+int main()
+{
+    server();
+}

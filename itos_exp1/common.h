@@ -15,6 +15,7 @@
 #include <sys/msg.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
+#include <sys/types.h>
 
 #define NULL 0
 

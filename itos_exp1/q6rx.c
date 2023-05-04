@@ -1,34 +1,45 @@
 #include "common.h"
 
-int main() {
-    const int SIZE = 1024;
-    const char *name = "/my_shared_memory";
-    char message[SIZE];
+#define SHMKEY 7755
 
-    // open the shared memory object
-    int shm_fd = shm_open(name, O_RDONLY, 0666);
-    if (shm_fd == -1) {
-        perror("Error opening shared memory");
-        exit(1);
+int shmid, i;
+int *addr;
+
+void client()
+{
+    int i;
+    shmid=shmget(SHMKEY,1024,0777);      /*打开共享存储区*/
+    addr=shmat(shmid,0,0);           /*获得共享存储区首地址*/
+    for (i=9;i>=0;i--)
+    {
+        while (*addr!=-1);
+        printf("(client) sent\n");
+        *addr=i;
     }
+    exit(0);
+}
 
-    // map the shared memory object into the current address space
-    void *ptr = mmap(0, SIZE, PROT_READ, MAP_SHARED, shm_fd, 0);
-    if (ptr == MAP_FAILED) {
-        perror("Error mapping shared memory");
-        exit(1);
-    }
+void server()
+{
+    shmid=shmget(SHMKEY,1024,0777|IPC_CREAT); /*创建共享存储区*/
+    addr=shmat(shmid,0,0);        /*获取首地址*/
+    do
+    {
+        *addr=-1;
+        while (*addr==-1);
+        printf("(server) received\n");
+    }while (*addr);
+    shmctl(shmid,IPC_RMID,0);     /*撤消共享存储区，归还资源*/
+    exit(0);
+}
 
-    printf("Press any key to receive the message...");
-    getchar();
-
-    // read from the shared memory object
-    memcpy(message, ptr, strlen(ptr)+1);
-
-    // clean up
-    munmap(ptr, SIZE);
-    close(shm_fd);
-
-    printf("%s\n", message);
-    return 0;
+int main( )
+{
+    while ((i=fork( ))==-1);
+    if (!i) server( );
+    system("ipcs  -m");
+    while ((i=fork( ))==-1);
+    if (!i) client( );
+    wait(0);
+    wait(0);
 }

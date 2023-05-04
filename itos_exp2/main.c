@@ -3,16 +3,16 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define COUNT_RESOURCE 10
-#define COUNT_PROCESS 10
-#define INITIAL_CAP 20
-#define DEMAND_CAP 20
+#define COUNT_RESOURCE 10 // total categories of resources
+#define COUNT_PROCESS 10 // count of processes
+#define INITIAL_CAP 20 // cap of initial available resources
+#define DEMAND_CAP 20 // cap of maximum demanded resources
 
-int available[COUNT_RESOURCE];
-int requirement[COUNT_PROCESS][COUNT_RESOURCE];
-int allocated[COUNT_PROCESS][COUNT_RESOURCE];
-int pending[COUNT_PROCESS];
-int pending_count = COUNT_PROCESS;
+int available[COUNT_RESOURCE]; // available resources
+int requirement[COUNT_PROCESS][COUNT_RESOURCE]; // maximum demand of every process
+int allocated[COUNT_PROCESS][COUNT_RESOURCE]; // allocated of every process
+int pending[COUNT_PROCESS]; // processes that are not executed
+int pending_count = COUNT_PROCESS; // count of pending list
 
 bool can_satisfy(int pi) {
     for (int i = 0; i < COUNT_RESOURCE; ++i) {
@@ -24,7 +24,8 @@ bool can_satisfy(int pi) {
 }
 
 void execute_unchecked(int pi) {
-    printf("---EXECUTION OF P%d---\n", pi);
+    int target = pending[pi];
+    printf("---EXECUTION OF P%d---\n", target);
     for (int i = 0; i < COUNT_RESOURCE; ++i) {
         printf("\tR%d", i);
     }
@@ -34,7 +35,7 @@ void execute_unchecked(int pi) {
     }
     printf("\nAFTER");
     for (int i = 0; i < COUNT_RESOURCE; ++i) {
-        available[i] += allocated[pi][i];
+        available[i] += allocated[target][i];
     }
     for (int i = 0; i < COUNT_RESOURCE; ++i) {
         printf("\t%d", available[i]);
@@ -42,7 +43,7 @@ void execute_unchecked(int pi) {
     printf("\n");
     --pending_count;
     if (pending_count != 0) {
-        pending[pi] = pending_count;
+        pending[pi] = pending[pending_count];
     }
 }
 
@@ -81,15 +82,17 @@ int main() {
     bool mutated = false;
     while (pending_count > 0) {
         for (int i = 0; i < pending_count; ++i) {
-            if (can_satisfy(pending[i])) {
-                execute_unchecked(pending[i]);
+            int target = pending[i];
+            if (can_satisfy(target)) { // if the resources are adequate
+                execute_unchecked(i); // already checked for safety, execute now
                 mutated = true;
                 break;
             }
         }
-        if (!mutated) {
+        if (!mutated) { // Oops, we can't execute anything!
             printf("Current state is unsafe!\n");
             break;
         }
+        mutated = false;
     }
 }
