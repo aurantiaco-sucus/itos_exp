@@ -16,4 +16,6 @@
 #include <sys/shm.h>
 #include <sys/mman.h>
 
+#define NULL 0
+
 #endif //ITOS_EXP1_COMMON_H
