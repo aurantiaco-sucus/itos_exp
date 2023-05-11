@@ -45,9 +45,6 @@ bool impl_page_present_in_cache(const int *cache, int cache_size, int page) {
 }
 #define present(n) impl_page_present_in_cache(cache, cache_size, n)
 
-#define evaluator(name) int name (const int *seq, int cache_size)
-typedef int (*evaluator_t)(const int *, int);
-
 #define init_handler(name) void * name (int cache_size)
 typedef void * (*init_handler_t)(int);
 
