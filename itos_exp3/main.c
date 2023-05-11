@@ -12,10 +12,10 @@
 //const int cache_size_min = 4;
 //const int cache_size_max = 32;
 
-const int ins_count = 32000;
-const int ins_per_page = 100;
-const int cache_size_min = 40;
-const int cache_size_max = 320;
+const int ins_count = 320;
+const int ins_per_page = 10;
+const int cache_size_min = 4;
+const int cache_size_max = 32;
 
 void populate_prophecy(int *seq) {
 #define tick_tock index += 1; if (index == ins_count) break;
@@ -37,161 +37,167 @@ void populate_prophecy(int *seq) {
 #define page_of(addr) (addr / ins_per_page)
 #define each_cache(index) for (int index = 0; index < cache_size; ++index)
 
-bool _i_page_present_in_cache(int *cache, int cache_size, int page) {
+bool impl_page_present_in_cache(const int *cache, int cache_size, int page) {
     for (int i = 0; i < cache_size; ++i) {
         if (cache[i] == page) return true;
     }
     return false;
 }
-#define present(n) _i_page_present_in_cache(cache, cache_size, n)
+#define present(n) impl_page_present_in_cache(cache, cache_size, n)
 
 #define evaluator(name) int name (const int *seq, int cache_size)
 typedef int (*evaluator_t)(const int *, int);
 
-#define init_handler(name) void * name ()
-typedef void * (*init_handler_t)();
+#define init_handler(name) void * name (int cache_size)
+typedef void * (*init_handler_t)(int);
 
-#define hit_handler(name) void name (void *state, int *cache, int cache_size, const int *prophecy, int req_page)
-typedef void (*hit_handler_t)(void *, int *, int, const int *, int);
+#define hit_handler(name) void name (void *state, const int *cache, int cache_size, const int *prophecy, int req_page)
+typedef void (*hit_handler_t)(void *, const int *, int, const int *, int);
 
 #define miss_handler(name) void name (void *state, int *cache, int cache_size, const int *prophecy, int req_page)
 typedef void (*miss_handler_t)(void *, int *, int, const int *, int);
 
+#define destructor(name) void name (void *state)
+typedef void (*destructor_t)(void *);
+
 init_handler(fifo_init) {
-    return (void *) 0;
+    int *head = malloc(sizeof(int));
+    *head = 0;
+    return (void *) head;
 }
 
 hit_handler(fifo_hit) {}
 
 miss_handler(fifo_miss) {
-    cache[(size_t) state] = req_page;
-    *((size_t *) state) += 1;
+    // Replace the page at the head of the queue
+    int *head = (int *) state;
+    cache[*head] = req_page;
+    *head = (*head + 1) % cache_size;
 }
 
-init_handler(noop_init) {
-    return NULL;
+destructor(fifo_destroy) {
+    free(state);
 }
+
+init_handler(noop_init) {return NULL;}
 
 hit_handler(noop_hit) {}
 
 miss_handler(noop_miss) {}
 
-evaluator(lru) {
-    int cache[cache_size];
-    int usage[cache_size];
-    int miss_count = 0;
+destructor(noop_destroy) {}
+
+init_handler(lru_init) {
+    int *usage = malloc(sizeof(int) * cache_size);
     for (int i = 0; i < cache_size; ++i) {
-        cache[i] = -1;
         usage[i] = 0;
     }
-    for (int i = 0; i < ins_count; ++i) {
-        int page = page_of(seq[i]);
-        bool hit = false;
-        int lru_index = 0;
-        for (int j = 0; j < cache_size; ++j) {
-            if (cache[j] == page) {
-                hit = true;
-                usage[j] = i; // update usage time for hit
-                break;
-            } else if (cache[j] == -1) { // found empty slot
-                cache[j] = page;
-                usage[j] = i;
-                miss_count += 1;
-                hit = true;
-                break;
-            } else if (usage[j] < usage[lru_index]) { // find least recently used index
-                lru_index = j;
-            }
-        }
-        if (!hit) { // replace least recently used page
-            cache[lru_index] = page;
-            usage[lru_index] = i;
-            miss_count += 1;
-        }
-    }
-    return ins_count - miss_count;
+    return (void *) usage;
 }
 
-evaluator(opt) {
-    int cache[cache_size];
-    int miss_count = 0;
-    for (int i = 0; i < ins_count; ++i) {
-        int page = page_of(seq[i]);
-        bool hit = false;
-        for (int j = 0; j < cache_size; ++j) {
-            if (cache[j] == page) {
-                hit = true;
-                break;
-            }
-        }
-        if (!hit) {
-            int replace_index = -1;
-            int farthest_distance = -1;
-            for (int j = 0; j < cache_size; ++j) {
-                int distance = 0;
-                for (int k = i + 1; k < ins_count; ++k) {
-                    if (cache[j] == page_of(seq[k])) {
-                        break;
-                    }
-                    ++distance;
-                }
-                if (distance > farthest_distance) {
-                    replace_index = j;
-                    farthest_distance = distance;
-                }
-            }
-            cache[replace_index] = page;
-            miss_count += 1;
+hit_handler(lru_hit) {
+    // Increment usage of all pages except the one that was hit
+    int *usage = (int *) state;
+    for (int i = 0; i < cache_size; ++i) {
+        if (cache[i] != req_page) {
+            usage[i] += 1;
+        } else {
+            usage[i] = 0;
         }
     }
-    return ins_count - miss_count;
 }
+
+miss_handler(lru_miss) {
+    // Find the least recently used page
+    int *usage = (int *) state;
+    int lru_index = 0;
+    for (int i = 1; i < cache_size; ++i) {
+        if (usage[i] > usage[lru_index]) {
+            lru_index = i;
+        }
+    }
+    cache[lru_index] = req_page;
+    usage[lru_index] = 0;
+    // Increment usage of all other pages
+    for (int i = 0; i < cache_size; ++i) {
+        if (i != lru_index) {
+            usage[i] += 1;
+        }
+    }
+}
+
+destructor(lru_destroy) {
+    free(state);
+}
+
+init_handler(opt_init) {
+    return NULL;
+}
+
+hit_handler(opt_hit) {}
+
+miss_handler(opt_miss) {
+    int farthest_distance = -1;
+    int farthest_index = -1;
+    for (int i = 0; i < cache_size; ++i) {
+        int distance = 0;
+        for (int j = req_page + 1; j < ins_count; ++j) {
+            if (cache[i] == page_of(prophecy[j])) {
+                break;
+            }
+            ++distance;
+        }
+        if (distance > farthest_distance) {
+            farthest_distance = distance;
+            farthest_index = i;
+        }
+    }
+    cache[farthest_index] = req_page;
+}
+
+destructor(opt_destroy) {}
 
 void simulate(const int *prophecy,
-                   const char *name,
-                   init_handler_t init,
-                   hit_handler_t hit,
-                   miss_handler_t miss,
-                   int cache_size) {
+              const char *name,
+              init_handler_t init,
+              hit_handler_t hit,
+              miss_handler_t miss,
+              destructor_t destroy,
+              int cache_size) {
     int hit_count = 0;
-    int cache[cache_size];
+    int *cache = malloc(sizeof(int) * cache_size);
     for (int i = 0; i < cache_size; ++i) {
         cache[i] = -1;
     }
-    void *state = init();
-    for (int ins_index = 0; ins_index < ins_count; ++ins_index) {
-        int req_page = page_of(ins_index);
+    void *state = init(cache_size);
+    for (int i = 0; i < ins_count; ++i) {
+        int req_page = page_of(prophecy[i]);
         if (present(req_page)) {
-            hit_count += 1;
+            ++hit_count;
             hit(state, cache, cache_size, prophecy, req_page);
         } else {
             miss(state, cache, cache_size, prophecy, req_page);
         }
     }
+    free(cache);
+    destroy(state);
     printf("%s,%d,%d,%d\n", name, cache_size, hit_count, ins_count);
 }
 
-void test(const int *seq, const char *name, evaluator_t eval, int cache_size) {
-    int hit_count = eval(seq, cache_size);
-    printf("R %s,%d,%d,%d\n", name, cache_size, hit_count, ins_count);
-}
-
 int main() {
+    FILE *result = fopen("result.txt", "w");
+    freopen("result.txt", "w", stdout);
     int prophecy[ins_count];
     lcpr_init_time();
     populate_prophecy(prophecy);
-//    printf("--- PROPHECY ---\n");
-//    for (int i = 0; i < ins_count; ++i) {
-//        printf("%d ", prophecy[i]);
-//    }
-//    printf("\n\n");
 
     for (int size = cache_size_min; size <= cache_size_max; ++size) {
-        simulate(prophecy, "noop", noop_init, noop_hit, noop_miss, size);
-        test(prophecy, "opt", opt, size);
-        simulate(prophecy, "fifo", fifo_init, fifo_hit, fifo_miss, size);
-        test(prophecy, "lru", lru, size);
+        simulate(prophecy, "noop", noop_init, noop_hit, noop_miss, noop_destroy, size);
+        simulate(prophecy, "opt", opt_init, opt_hit, opt_miss, opt_destroy, size);
+        simulate(prophecy, "fifo", fifo_init, fifo_hit, fifo_miss, fifo_destroy, size);
+        simulate(prophecy, "lru", lru_init, lru_hit, lru_miss, lru_destroy, size);
         printf("\n");
     }
-
+    fclose(result);
+    return 0;
 }
